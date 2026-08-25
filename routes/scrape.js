@@ -192,29 +192,31 @@ scrapRoutes.post("/", async (req, res) => {
           waitUntil: "domcontentloaded",
           timeout: PUPPETEER_TIMEOUT_MS,
         });
-        // Give lazy-loaded product images a moment to attach.
-        await new Promise((r) => setTimeout(r, 3000));
+        // Product images are lazy-loaded below the fold and never fetch in a
+        // headless viewport that never moves. Scroll through the page first so
+        // they attach, then settle.
+        await page.evaluate(async () => {
+          await new Promise((resolve) => {
+            let y = 0;
+            const step = 600;
+            const timer = setInterval(() => {
+              window.scrollBy(0, step);
+              y += step;
+              if (y >= document.body.scrollHeight || y > 12000) {
+                clearInterval(timer);
+                window.scrollTo(0, 0);
+                resolve();
+              }
+            }, 200);
+          });
+        });
+        await new Promise((r) => setTimeout(r, 2500));
 
-        const puppeteerImages = await page.evaluate(() => {
+        const rawCandidates = await page.evaluate(() => {
           const urls = new Set();
 
-          document.querySelectorAll("img").forEach((img) => {
-            if (
-              img.src &&
-              img.naturalWidth > 100 &&
-              img.naturalHeight > 100 &&
-              !img.src.includes("logo") &&
-              !img.src.includes("sprite") &&
-              !img.src.includes("icon")
-            ) {
-              urls.add(img.src);
-            }
-          });
-
-          // Same srcset trap as the cheerio path - take the largest candidate,
-          // never the raw attribute.
           const pickBest = (srcset) => {
-            const best = srcset
+            const best = String(srcset)
               .split(",")
               .map((part) => {
                 const [u, d = ""] = part.trim().split(/\s+/);
@@ -225,18 +227,46 @@ scrapRoutes.post("/", async (req, res) => {
             return best.u;
           };
 
-          document
-            .querySelectorAll("picture source[srcset], img[srcset]")
-            .forEach((el) => {
-              const best = pickBest(el.srcset);
+          // No naturalWidth gate: it requires the image to have finished
+          // loading, which silently discarded everything on lazy-loading sites.
+          // Size filtering happens later, by URL, on the Node side.
+          document.querySelectorAll("img").forEach((img) => {
+            if (img.src) urls.add(img.src);
+            if (img.srcset) {
+              const best = pickBest(img.srcset);
               if (best) urls.add(best);
-            });
+            }
+            // Lazy-load placeholders keep the real URL in a data attribute.
+            for (const attr of ["data-src", "data-original", "data-lazy", "data-image"]) {
+              const v = img.getAttribute(attr);
+              if (v) urls.add(v);
+            }
+          });
 
-          return Array.from(urls);
+          document.querySelectorAll("picture source[srcset]").forEach((el) => {
+            const best = pickBest(el.srcset);
+            if (best) urls.add(best);
+          });
+
+          return { urls: Array.from(urls), html: document.documentElement.outerHTML };
         });
 
-        images = puppeteerImages;
-        console.log(`[scrape] puppeteer found ${images.length} images`);
+        // Sites like Myntra render only a handful of <img> tags and keep the
+        // real gallery in embedded JSON. The same regex sweep the cheerio path
+        // uses finds those, so run it over the rendered DOM too.
+        const fromHtml =
+          rawCandidates.html.match(
+            /https?:\/\/[^\s<>"'\\]+\.(?:jpg|jpeg|png|webp)/gi
+          ) || [];
+
+        images = [...new Set([...rawCandidates.urls, ...fromHtml])].filter(
+          (src) => isValidImage(src) && isValidImageUrl(src)
+        );
+
+        console.log(
+          `[scrape] puppeteer found ${images.length} images ` +
+            `(${rawCandidates.urls.length} from DOM, ${fromHtml.length} from markup)`
+        );
       } catch (puppeteerErr) {
         console.error(`[scrape] puppeteer failed: ${puppeteerErr.message}`);
       } finally {
