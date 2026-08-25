@@ -17,3 +17,6 @@
 .claude
 Detail-app.md
 .vercel
+
+# Puppeteer downloads Chromium here (see .puppeteerrc.cjs)
+.cache/

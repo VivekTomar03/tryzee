@@ -3,19 +3,12 @@ services:
     name: try-it-backend
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npx puppeteer browsers install chrome
     startCommand: npm start
     healthCheckPath: /
     envVars:
       - key: NODE_VERSION
         value: "22"
-
-      # Puppeteer downloads Chromium during build into ~/.cache/puppeteer,
-      # which Render does NOT carry over to the runtime container. Pointing
-      # the cache inside the project keeps the browser available at runtime,
-      # so the /scrape-images fallback actually works.
-      - key: PUPPETEER_CACHE_DIR
-        value: /opt/render/project/src/.cache/puppeteer
 
       # Set these in the Render dashboard — never commit real values.
       - key: MONGO_URI
