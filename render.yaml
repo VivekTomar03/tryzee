@@ -1,0 +1,51 @@
+services:
+  - type: web
+    name: try-it-backend
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # Puppeteer downloads Chromium during build into ~/.cache/puppeteer,
+      # which Render does NOT carry over to the runtime container. Pointing
+      # the cache inside the project keeps the browser available at runtime,
+      # so the /scrape-images fallback actually works.
+      - key: PUPPETEER_CACHE_DIR
+        value: /opt/render/project/src/.cache/puppeteer
+
+      # Set these in the Render dashboard — never commit real values.
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+      - key: GEMINI_IMAGE_MODELS
+        value: gemini-3-pro-image,gemini-3.1-flash-image,gemini-3.1-flash-lite-image,gemini-2.5-flash-image
+      - key: GEMINI_RETRIES_PER_MODEL
+        value: "2"
+      - key: GEMINI_ATTEMPT_TIMEOUT_MS
+        value: "60000"
+      - key: GEMINI_TOTAL_BUDGET_MS
+        value: "150000"
